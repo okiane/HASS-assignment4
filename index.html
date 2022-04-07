@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+	
+<head>
+	<title>Population size for subdistricts in Singapore (Year 2021)</title>
+	<meta charset="UTF-8">
+	
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Exo|Red+Hat+Display">
+	<style>
+		body{
+/*			font-family: Arial, Helvetica, sans-serif;*/
+			font-family: "Exo", "Red Hat Display", Segoe, "sans-serif";*/;
+			font-size: 14px;
+			text-align: justified;
+			/* text-align: center; */
+		}
+		.district {
+			stroke: white;
+			stroke-width: 0.5;
+			opacity: 0.9;
+			}
+		.highlight {
+			stroke: red;
+			stroke-width: 5;
+			opacity: 0.3;
+			}
+		#title{
+			position: fixed;
+			top: 5%;
+			left: 50%;
+			margin-left: -100px;
+			width: 200px;
+/*			font-family: Arial, sans-serif;*/
+			font-size: 18px;
+			color: white;
+			background: black;
+			border: 1px solid white;
+			border-radius: 15px;
+			z-index: 800;
+			}
+		#title h3 {
+			text-align: center;
+			}
+		#map {
+			width: 100vw;
+			height: 100vh;
+			}
+		#legend {
+			position: fixed;
+			bottom: 2%;
+			right: 2%;
+			z-index: 1000;
+			}
+		#display {
+			position: fixed;
+			background: white;
+			bottom: 16%;
+			right: 2%;
+			width: 315px;
+			height: 150px;
+			border: 1px solid black;
+			border-radius: 15px;
+			z-index: 1000;
+			text-align: center;
+			font-size: 20px;
+			}    
+	</style>
+	
+	
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+	
+<body>
+
+<div id="map"></div>
+<div id="legend"></div>
+<div id="display">
+  <centre>Select a subdistrict</centre>
+</div>
+	
+<!--
+<div id="title">
+    <h3>Subdistrict Population</h3>
+</div>
+-->
+
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+<script src="https://chi-loong.github.io/HASS02.526/solutions/lib/legend.js"></script>
+	
+<script>
+
+	// Define base map
+	let tiles = new L.tileLayer('https://maps-{s}.onemap.sg/v3/Original/{z}/{x}/{y}.png', {
+	  detectRetina: true,
+	  maxZoom: 18,
+	  minZoom: 11,
+	  //Do not remove this attribution
+	  attribution: 
+		'<img src="https://docs.onemap.sg/maps/images/oneMap64-01.png" style="height:20px;width:20px;">' +	   
+		'New OneMap | Map data © contributors, <a href="http://SLA.gov.sg">Singapore Land Authority</a>'
+		+
+		' and Mr Chan Chi-Loong'
+	});
+
+	let map = new L.Map("map", {
+		center: [1.347833, 103.809357], 
+		zoom: 12,
+		maxBounds: L.latLngBounds(L.latLng(1.5, 103.5), L.latLng(1.1, 104.3))
+		})
+		.addLayer(tiles);
+
+	let svg = d3.select(map.getPanes().overlayPane)
+		.append("svg")
+		.attr("width", window.innerWidth)
+		.attr("height", window.innerHeight)
+		.append("g")
+		.attr("id","svgLayer")
+		.attr("class", "leaflet-zoom-hide");
+
+	function projectPoint(x, y) {
+	  var point = map.latLngToLayerPoint(new L.LatLng(y, x));
+	  this.stream.point(point.x, point.y);
+	}
+
+	let projection = d3.geoTransform({point: projectPoint});
+	let geopath = d3.geoPath().projection(projection);
+
+	let url_map = "https://chi-loong.github.io/HASS02.526/assignments/sgmap.json"
+	let url_data = "https://chi-loong.github.io/HASS02.526/assignments/population2021.csv"
+
+	let map_x_name = "Subzone Name"
+	let col_x_name = "Subzone"
+	let col_y_name = "Population"
+
+	// Retrieve data
+	Promise.all([d3.json(url_map), d3.csv(url_data)]).then(data => {
+
+	let mapFeatures = [];
+
+//	console.log(data[0])
+
+	// Merge data
+	data[0].features.forEach(d => {
+		let result = _.find(data[1], e => { 
+			return e[col_x_name].toUpperCase() == d["properties"][map_x_name]
+			});
+
+		let mapObject = d;
+			mapObject[col_y_name] = null;
+
+		if (result != undefined) {
+			if (result[col_y_name] != "-") {
+				mapObject[col_y_name] = result[col_y_name];
+			}
+		}
+		mapFeatures.push(mapObject);
+	})
+
+	console.log(mapFeatures)
+//	console.log(mapFeatures.map(d => d[col_y_name]));
+
+	let max_y = d3.max(data[1], function(d) { 
+									return d[col_y_name]; 
+									})
+
+	scale_no = 8
+	max_y_round = Math.round(max_y/1000) * 1000
+//	console.log(max_y)
+
+	
+	// Colour Scale
+	let colorScale = d3.scaleQuantize([0, max_y_round], 
+									  d3.schemeReds[scale_no]);
+
+	// Plot choropleth map
+	svg.append("g")
+		.attr("id", "subdistricts")
+		.selectAll("path")
+		.data(mapFeatures)
+		.enter()
+		.append("path")
+		.attr("d", geopath)
+		.classed("district", true)
+		.classed("leaflet-interactive", true)
+		.attr("fill", d => {
+			if (d[col_y_name] != null && d[col_y_name] != "-") { return colorScale(d[col_y_name]); }
+			else return "#777";
+		})
+		
+		.on("mouseover", (event, d) => {
+			d3.select(event.currentTarget)
+				.classed("highlight", true);
+			d3.select("#display")
+				.text(d["properties"][map_x_name]);
+			if (d[col_y_name] != null && d[col_y_name] != "-") {
+				d3.select("#display")
+				.html(d["properties"][map_x_name] + " has " + d3.format(",.2r")(d[col_y_name]) + " people");
+			} else {
+				d3.select("#display")
+				.html(d["properties"][map_x_name] + " has insufficient data");
+			}
+		})
+		
+		.on("mouseout", (event, d) => {
+			d3.select(event.currentTarget)
+				.classed("highlight", false);
+			d3.select("#display")
+			.text("Select a subdistrict");
+		});
+		
+
+		legend({ 
+			color: colorScale, 
+			title: "Population size for subdistricts", 
+			width: 500,
+			tickFormat: ".0f"
+		});
+
+		
+		// Map functions
+		map.on('zoomend', onZoom);
+		onZoom();
+
+		
+		function onZoom() {
+			var bounds = geopath.bounds(data[0]),
+				topLeft = bounds[0],
+				bottomRight = bounds[1];
+
+			var svg = d3.select(map.getPanes().overlayPane).select("svg");
+
+			svg.attr("width", bottomRight[0] - topLeft[0])
+			   .attr("height", bottomRight[1] - topLeft[1])
+			   .style("left", topLeft[0] + "px")
+			   .style("top", topLeft[1] + "px");
+
+			svg.select("g").attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
+			d3.select("g#subdistricts").selectAll("path")
+			   .attr("d", geopath);
+		}
+
+
+			d3.select("g#subdistricts")
+			.selectAll("path")
+			.transition()
+			.duration(1000)
+			.attr("fill", d => {
+				if (d[col_y_name] != null && d[col_y_name] != "-") { return colorScale(d[col_y_name]); }
+				else return "#777";
+			})
+
+			d3.select("g#legendRect")
+			.selectAll("rect")
+			.attr("fill", (d,i) => {
+				return colorScale.range()[i];
+			})
+
+			d3.select("#legendHeading")
+			.text("Population Size for subdistricts");
+
+
+
+
+	})
+
+
+
+
+</script>
+
+</body>
+</html>
